@@ -161,11 +161,14 @@ function atualizarTextoManifestacao(tipo) {
   var uf   = (dadosEntidade && dadosEntidade.uf)          ? dadosEntidade.uf          : '[UF]';
   var mun  = (dadosEntidade && dadosEntidade.municipio)   ? dadosEntidade.municipio   : '[NOME DO MUNICÍPIO]';
 
+  var resolucao = 'Resolução CGIBS nº 07/2026';
+  var dataSpan  = '<span id="data-manifestacao-' + tipo.toLowerCase() + '" style="color:#1351b4;font-weight:600;">[será preenchida no envio]</span>';
+
   var texto = '';
   if (tipo === 'Estadual') {
-    texto = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Assembleia Legislativa do Estado de <strong>' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Casa Legislativa quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da Resolução CGIBS nº [XX], de [data], no Diário Oficial da União nº [XX], de [data], nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional deste Poder Legislativo, para os fins previstos na legislação aplicável.';
+    texto = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Assembleia Legislativa do Estado de <strong>' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Casa Legislativa quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da <strong>' + resolucao + '</strong>, no Diário Oficial da União, nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional deste Poder Legislativo, para os fins previstos na legislação aplicável.<br><br><em>Data da manifestação: ' + dataSpan + '</em>';
   } else {
-    texto = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Câmara Municipal de <strong>' + mun + ' – ' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Câmara Municipal quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da Resolução CGIBS nº [XX], de [data], no Diário Oficial da União nº [XX], de [data], nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional desta Câmara Municipal, para os fins previstos na legislação aplicável.';
+    texto = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Câmara Municipal de <strong>' + mun + ' – ' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Câmara Municipal quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da <strong>' + resolucao + '</strong>, no Diário Oficial da União, nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional desta Câmara Municipal, para os fins previstos na legislação aplicável.<br><br><em>Data da manifestação: ' + dataSpan + '</em>';
   }
   el.innerHTML = texto;
 }
@@ -294,6 +297,17 @@ function enviarFormulario(e) {
   var btn = document.getElementById('btn-enviar');
   btn.disabled = true;
   btn.innerHTML = '⏳ Enviando...';
+
+  // Gera e injeta a data do envio no texto da manifestação
+  var agora = new Date();
+  var dataEnvio = agora.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  var horaEnvio = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  var dataCompleta = dataEnvio + ' às ' + horaEnvio;
+  ['estadual','municipal'].forEach(function(t) {
+    var spanData = document.getElementById('data-manifestacao-' + t);
+    if (spanData) spanData.textContent = dataCompleta;
+  });
+  payload.data_manifestacao = dataCompleta;
 
   // PASSO 1: GET reserva o protocolo no servidor (CORS liberado em GET)
   fetch(WEBAPP_URL + '?reservar=1&t=' + Date.now(), { mode: 'cors' })
@@ -751,7 +765,7 @@ selecionarTipo = function(tipo) {
     var uf   = (dadosEntidade && dadosEntidade.uf)          ? dadosEntidade.uf          : '[UF]';
     var mun  = (dadosEntidade && dadosEntidade.municipio)   ? dadosEntidade.municipio   : '[NOME DO MUNICÍPIO]';
     var elM  = document.getElementById('texto-manifestacao-mun');
-    if (elM) elM.innerHTML = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Câmara Municipal de <strong>' + mun + ' – ' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Câmara Municipal quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da Resolução CGIBS nº [XX], de [data], no Diário Oficial da União nº [XX], de [data], nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional desta Câmara Municipal, para os fins previstos na legislação aplicável.';
+    if (elM) elM.innerHTML = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Câmara Municipal de <strong>' + mun + ' – ' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Câmara Municipal quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da <strong>Resolução CGIBS nº 07/2026</strong>, no Diário Oficial da União, nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional desta Câmara Municipal, para os fins previstos na legislação aplicável.<br><br><em>Data da manifestação: <span id="data-manifestacao-municipal" style="color:#1351b4;font-weight:600;">[será preenchida no envio]</span></em>';
   }
 };
 </script>
