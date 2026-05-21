@@ -342,7 +342,7 @@ input[type=text], input[type=email], select, textarea {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 input[type=text]:focus, select:focus, textarea:focus { outline: none; border-color: #1351b4; box-shadow: 0 0 0 3px rgba(19,81,180,0.1); }
-input[readonly] { background: #f0f4f8; color: #555; cursor: default; }
+
 select { cursor: pointer; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
@@ -523,16 +523,16 @@ footer { background: #0c326f; color: rgba(255,255,255,0.55); text-align: center;
         <div class="row3">
           <div class="field">
             <label class="lbl" for="uf-est">Estado (UF) <span class="obrig">*</span></label>
-            <input type="text" id="uf-est" name="uf_estadual" placeholder="SC" maxlength="2" readonly>
+            <input type="text" id="uf-est" name="uf_estadual" placeholder="SC" maxlength="2">
           </div>
           <div class="field" style="grid-column: span 2;">
             <label class="lbl" for="presidente-est">Nome do Presidente <span class="obrig">*</span></label>
-            <input type="text" id="presidente-est" name="presidente_estadual" placeholder="Preenchido automaticamente pelo token" readonly>
+            <input type="text" id="presidente-est" name="presidente_estadual" placeholder="Preenchido automaticamente pelo token">
           </div>
         </div>
         <div class="field">
           <label class="lbl" for="cpf-est">CPF do Presidente <span class="obrig">*</span></label>
-          <input type="text" id="cpf-est" name="cpf_estadual" placeholder="Preenchido automaticamente pelo token" readonly>
+          <input type="text" id="cpf-est" name="cpf_estadual" placeholder="Preenchido automaticamente pelo token">
         </div>
 
         <div class="field">
@@ -577,21 +577,21 @@ footer { background: #0c326f; color: rgba(255,255,255,0.55); text-align: center;
         <div class="row2">
           <div class="field">
             <label class="lbl" for="uf-mun">Estado (UF) <span class="obrig">*</span></label>
-            <input type="text" id="uf-mun" name="uf_municipal" placeholder="SC" maxlength="2" readonly>
+            <input type="text" id="uf-mun" name="uf_municipal" placeholder="SC" maxlength="2">
           </div>
           <div class="field">
             <label class="lbl" for="municipio">Município <span class="obrig">*</span></label>
-            <input type="text" id="municipio" name="municipio" placeholder="Preenchido automaticamente" readonly>
+            <input type="text" id="municipio" name="municipio" placeholder="Preenchido automaticamente">
           </div>
         </div>
         <div class="row2">
           <div class="field">
             <label class="lbl" for="presidente-mun">Nome do Presidente <span class="obrig">*</span></label>
-            <input type="text" id="presidente-mun" name="presidente_municipal" placeholder="Preenchido automaticamente pelo token" readonly>
+            <input type="text" id="presidente-mun" name="presidente_municipal" placeholder="Preenchido automaticamente pelo token">
           </div>
           <div class="field">
             <label class="lbl" for="cpf-mun">CPF do Presidente <span class="obrig">*</span></label>
-            <input type="text" id="cpf-mun" name="cpf_municipal" placeholder="Preenchido automaticamente pelo token" readonly>
+            <input type="text" id="cpf-mun" name="cpf_municipal" placeholder="Preenchido automaticamente pelo token">
           </div>
         </div>
 
