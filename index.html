@@ -289,29 +289,41 @@ function enviarFormulario(e) {
   btn.disabled = true;
   btn.innerHTML = '⏳ Enviando...';
 
-  // POST com no-cors (Apps Script não suporta CORS em POST)
-  // Protocolo gerado localmente — o mesmo é gravado no servidor via timestamp
-  var protocolo = 'PROT-2026-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2,4).toUpperCase();
+  // PASSO 1: GET reserva o protocolo no servidor (CORS liberado em GET)
+  fetch(WEBAPP_URL + '?reservar=1')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var protocolo = data.protocolo || ('PROT-2026-' + Date.now().toString(36).toUpperCase());
+      payload.protocolo = protocolo; // inclui o protocolo no payload do POST
 
-  fetch(WEBAPP_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-  .then(function() {
-    document.getElementById('num-protocolo').textContent = protocolo;
-    document.getElementById('form-manifestacao').style.display = 'none';
-    document.getElementById('aviso-topo').style.display = 'none';
-    document.getElementById('tela-sucesso').style.display = 'block';
-    window.scrollTo(0,0);
-  })
-  .catch(function(err) {
-    btn.disabled = false;
-    btn.innerHTML = '🔒 Enviar Manifestação Oficial';
-    erroDiv.style.display = 'block';
-    erroDiv.innerHTML = '❌ Erro de conexão. Verifique sua internet e tente novamente.';
-  });
+      // PASSO 2: POST grava os dados com o mesmo protocolo (no-cors necessário)
+      fetch(WEBAPP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(function() {
+        // Exibe o mesmo protocolo que foi gravado na planilha
+        document.getElementById('num-protocolo').textContent = protocolo;
+        document.getElementById('form-manifestacao').style.display = 'none';
+        document.getElementById('aviso-topo').style.display = 'none';
+        document.getElementById('tela-sucesso').style.display = 'block';
+        window.scrollTo(0,0);
+      })
+      .catch(function() {
+        btn.disabled = false;
+        btn.innerHTML = '🔒 Enviar Manifestação Oficial';
+        erroDiv.style.display = 'block';
+        erroDiv.innerHTML = '❌ Erro ao enviar. Verifique sua internet e tente novamente.';
+      });
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.innerHTML = '🔒 Enviar Manifestação Oficial';
+      erroDiv.style.display = 'block';
+      erroDiv.innerHTML = '❌ Erro de conexão ao gerar protocolo. Verifique sua internet.';
+    });
 }
 </script>
 <style>
