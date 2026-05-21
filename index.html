@@ -66,10 +66,8 @@ function validarArquivo(input) {
     input.value = ''; atualizarBotao(); return;
   }
   arquivoValido = true;
-  var aviso = !nome.startsWith('signed-')
-    ? '<span style="color:#b07300">⚠️ Arquivo não começa com "signed-". Confirme que é o PDF assinado pelo Gov.br.</span>'
-    : '<span style="color:#168821">✔ Arquivo válido: ' + arq.name + ' (' + mb.toFixed(2) + 'MB)</span>';
-  feedback.innerHTML = aviso;
+  // MODO TESTE: qualquer PDF aceito (remover esta linha em produção)
+  feedback.innerHTML = '<span style="color:#168821">✔ Arquivo aceito: ' + arq.name + ' (' + mb.toFixed(2) + 'MB) — Modo Teste</span>';
   atualizarBotao();
 }
 
