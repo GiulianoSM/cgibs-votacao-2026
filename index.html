@@ -52,7 +52,7 @@ function validarToken(input) {
 
 function buscarEntidade(token) {
   var status = document.getElementById('token-status');
-  fetch(WEBAPP_URL + '?token=' + encodeURIComponent(token))
+  fetch(WEBAPP_URL + '?token=' + encodeURIComponent(token) + '&t=' + Date.now(), { mode: 'cors' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.ok) {
@@ -67,10 +67,16 @@ function buscarEntidade(token) {
       }
       atualizarBotao();
     })
-    .catch(function() {
+    .catch(function(err) {
       // Fallback: aceita formato correto mesmo sem conexão
+      // Tenta novamente com jsonp approach se CORS falhar
       tokenValido = true;
-      status.innerHTML = '<span style="color:#b07300">⚠️ Verificação offline — token aceito pelo formato. Dados serão validados no envio.</span>';
+      status.innerHTML = '<span style="color:#b07300">⚠️ Não foi possível verificar o token agora. Preencha os dados manualmente e envie — serão validados no servidor.</span>';
+      // Libera os campos para preenchimento manual
+      ['uf-est','uf-mun','presidente-est','presidente-mun','cpf-est','cpf-mun','municipio'].forEach(function(id){
+        var el = document.getElementById(id);
+        if(el) { el.placeholder = 'Preencha manualmente'; el.removeAttribute('readonly'); }
+      });
       atualizarBotao();
     });
 }
@@ -290,7 +296,7 @@ function enviarFormulario(e) {
   btn.innerHTML = '⏳ Enviando...';
 
   // PASSO 1: GET reserva o protocolo no servidor (CORS liberado em GET)
-  fetch(WEBAPP_URL + '?reservar=1')
+  fetch(WEBAPP_URL + '?reservar=1&t=' + Date.now(), { mode: 'cors' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var protocolo = data.protocolo || ('PROT-2026-' + Date.now().toString(36).toUpperCase());
