@@ -780,6 +780,8 @@ selecionarTipo = function(tipo) {
     var mun  = (dadosEntidade && dadosEntidade.municipio)   ? dadosEntidade.municipio   : '[NOME DO MUNICÍPIO]';
     var elM  = document.getElementById('texto-manifestacao-mun');
     if (elM) elM.innerHTML = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Câmara Municipal de <strong>' + mun + ' – ' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Câmara Municipal quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da <strong>Resolução CGIBS nº 07/2026</strong>, no Diário Oficial da União, nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional desta Câmara Municipal, para os fins previstos na legislação aplicável.<br><br><em>Data da manifestação: <span id="data-manifestacao-municipal" style="color:#1351b4;font-weight:600;">[será preenchida no envio]</span></em>';
+    // Preenche a data imediatamente após montar o texto municipal
+    preencherDataNoTexto();
   }
 };
 </script>
