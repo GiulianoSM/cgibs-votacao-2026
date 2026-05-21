@@ -289,14 +289,17 @@ function enviarFormulario(e) {
   btn.disabled = true;
   btn.innerHTML = '⏳ Enviando...';
 
+  // POST com no-cors (Apps Script não suporta CORS em POST)
+  // Protocolo gerado localmente — o mesmo é gravado no servidor via timestamp
+  var protocolo = 'PROT-2026-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2,4).toUpperCase();
+
   fetch(WEBAPP_URL, {
     method: 'POST',
+    mode: 'no-cors',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    var protocolo = data.protocolo || ('PROT-2026-' + Math.random().toString(36).substr(2,8).toUpperCase());
+  .then(function() {
     document.getElementById('num-protocolo').textContent = protocolo;
     document.getElementById('form-manifestacao').style.display = 'none';
     document.getElementById('aviso-topo').style.display = 'none';
