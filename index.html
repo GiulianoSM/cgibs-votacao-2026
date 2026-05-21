@@ -6,79 +6,212 @@
 <title>Manifestação Orçamentária CGIBS 2026</title>
 <script>
 // ═══════════════════════════════════════════════════════════
-// CGIBS — Formulário de Manifestação Orçamentária 2026
-// Todas as funções definidas aqui no <head>, antes do HTML
+// CONFIGURAÇÃO
 // ═══════════════════════════════════════════════════════════
+var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw08Jel2p2GYo1Uj1JSBs-Ym3osY3WIKnEo15mtw0PWRjsuGawpEqczhESl4icrNa3Xtw/exec';
 
-var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbz7vU6yzpiMSEcVO_8KMXaBtgOFo_hRNp_o_WjrrChmYR_V7rxd0xN22nZWjGfUcryz8w/exec';
+// ═══════════════════════════════════════════════════════════
+// ESTADO
+// ═══════════════════════════════════════════════════════════
 var tipoSelecionado = null;
 var arquivoValido   = false;
 var tokenValido     = false;
+var dadosEntidade   = null; // dados retornados pelo Apps Script
 
-// ── Mostrar/ocultar seções conforme tipo selecionado ─────
-function selecionarTipo(tipo) {
-  tipoSelecionado = tipo;
-  document.getElementById('tipo_poder').value = tipo;
+// ═══════════════════════════════════════════════════════════
+// TOKEN — validação e autopreenchimento
+// ═══════════════════════════════════════════════════════════
+var tokenTimer = null;
 
-  document.getElementById('btn-estadual').className =
-    'tipo-btn' + (tipo === 'Estadual' ? ' ativo' : '');
-  document.getElementById('btn-municipal').className =
-    'tipo-btn' + (tipo === 'Municipal' ? ' ativo' : '');
-
-  document.getElementById('secao-estadual').style.display =
-    tipo === 'Estadual' ? 'block' : 'none';
-  document.getElementById('secao-municipal').style.display =
-    tipo === 'Municipal' ? 'block' : 'none';
-  document.getElementById('secao-upload').style.display    = 'block';
-  document.getElementById('secao-declaracao').style.display = 'block';
-
-  atualizarBotao();
-}
-
-// ── Validação do token ───────────────────────────────────
 function validarToken(input) {
   var val = input.value.toUpperCase().replace(/\s/g,'');
   input.value = val;
   var status = document.getElementById('token-status');
-  var ok = /^ORC2026-[A-Z]{2,}-[A-Z]{2,3}-\d{3}$/.test(val);
-  tokenValido = ok;
-  status.innerHTML = val.length === 0 ? '' :
-    ok ? '<span style="color:#168821">✔ Token válido</span>'
-       : '<span style="color:#c0392b">✘ Formato inválido. Ex: ORC2026-SC-EST-001</span>';
+
+  // Limpa estado anterior
+  tokenValido   = false;
+  dadosEntidade = null;
+  tipoSelecionado = null;
+  limparCampos();
+  atualizarBotao();
+
+  if (!val) { status.innerHTML = ''; return; }
+
+  var formatoOk = /^ORC2026-[A-Z]{2,}-[A-Z]{2,3}-\d{3}$/.test(val);
+  if (!formatoOk) {
+    status.innerHTML = '<span style="color:#c0392b">✘ Formato inválido. Ex: ORC2026-SC-EST-001</span>';
+    return;
+  }
+
+  status.innerHTML = '<span style="color:#b07300">⏳ Verificando token...</span>';
+
+  // Debounce — espera 600ms após última digitação
+  clearTimeout(tokenTimer);
+  tokenTimer = setTimeout(function() { buscarEntidade(val); }, 600);
+}
+
+function buscarEntidade(token) {
+  var status = document.getElementById('token-status');
+  fetch(WEBAPP_URL + '?token=' + encodeURIComponent(token))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        dadosEntidade = data;
+        tokenValido   = true;
+        status.innerHTML = '<span style="color:#168821">✔ Token reconhecido — ' + data.casa + '</span>';
+        // Pré-seleciona o tipo automaticamente
+        selecionarTipo(data.tipo_poder);
+      } else {
+        tokenValido = false;
+        status.innerHTML = '<span style="color:#c0392b">✘ ' + (data.erro || 'Token não encontrado na base de entidades habilitadas.') + '</span>';
+      }
+      atualizarBotao();
+    })
+    .catch(function() {
+      // Fallback: aceita formato correto mesmo sem conexão
+      tokenValido = true;
+      status.innerHTML = '<span style="color:#b07300">⚠️ Verificação offline — token aceito pelo formato. Dados serão validados no envio.</span>';
+      atualizarBotao();
+    });
+}
+
+function limparCampos() {
+  ['uf-est','uf-mun'].forEach(function(id) {
+    var el = document.getElementById(id); if(el) el.value = '';
+  });
+  ['presidente-est','presidente-mun','cpf-est','cpf-mun','municipio'].forEach(function(id) {
+    var el = document.getElementById(id); if(el) el.value = '';
+  });
+  // Oculta seções
+  ['secao-estadual','secao-municipal','secao-upload','secao-declaracao'].forEach(function(id) {
+    var el = document.getElementById(id); if(el) el.style.display = 'none';
+  });
+  // Limpa votos
+  document.querySelectorAll('input[name="voto_estadual"], input[name="voto_municipal"]').forEach(function(r){ r.checked = false; });
+  // Oculta motivo rejeição
+  ocultarMotivo('estadual'); ocultarMotivo('municipal');
+  // Reseta tipo btns
+  ['btn-estadual','btn-municipal'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.className = 'tipo-btn';
+  });
+  tipoSelecionado = null;
+  arquivoValido = false;
+  document.getElementById('upload-feedback').innerHTML = '';
+  var fi = document.getElementById('arquivo-pdf'); if(fi) fi.value = '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// TIPO DE PODER — seleção e autopreenchimento
+// ═══════════════════════════════════════════════════════════
+function selecionarTipo(tipo) {
+  tipoSelecionado = tipo;
+  document.getElementById('tipo_poder').value = tipo;
+
+  document.getElementById('btn-estadual').className = 'tipo-btn' + (tipo === 'Estadual' ? ' ativo' : '');
+  document.getElementById('btn-municipal').className = 'tipo-btn' + (tipo === 'Municipal' ? ' ativo' : '');
+
+  document.getElementById('secao-estadual').style.display  = tipo === 'Estadual' ? 'block' : 'none';
+  document.getElementById('secao-municipal').style.display = tipo === 'Municipal' ? 'block' : 'none';
+  document.getElementById('secao-upload').style.display    = 'block';
+  document.getElementById('secao-declaracao').style.display = 'block';
+
+  // Autopreenchimento com dados da entidade
+  if (dadosEntidade) {
+    preencherDados(tipo);
+  }
+
+  // Atualiza texto da manifestação
+  atualizarTextoManifestacao(tipo);
   atualizarBotao();
 }
 
-// ── Validação do arquivo PDF ─────────────────────────────
+function preencherDados(tipo) {
+  if (!dadosEntidade) return;
+  if (tipo === 'Estadual') {
+    setVal('uf-est',         dadosEntidade.uf);
+    setVal('presidente-est', dadosEntidade.presidente);
+    setVal('cpf-est',        dadosEntidade.cpf);
+  } else {
+    setVal('uf-mun',         dadosEntidade.uf);
+    setVal('municipio',      dadosEntidade.municipio);
+    setVal('presidente-mun', dadosEntidade.presidente);
+    setVal('cpf-mun',        dadosEntidade.cpf);
+  }
+}
+
+function setVal(id, val) {
+  var el = document.getElementById(id);
+  if (el && val) el.value = val;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TEXTO DA MANIFESTAÇÃO (item 3)
+// ═══════════════════════════════════════════════════════════
+function atualizarTextoManifestacao(tipo) {
+  var el = document.getElementById('texto-manifestacao');
+  if (!el) return;
+
+  var nome = (dadosEntidade && dadosEntidade.presidente) ? dadosEntidade.presidente : '[NOME COMPLETO]';
+  var uf   = (dadosEntidade && dadosEntidade.uf)          ? dadosEntidade.uf          : '[UF]';
+  var mun  = (dadosEntidade && dadosEntidade.municipio)   ? dadosEntidade.municipio   : '[NOME DO MUNICÍPIO]';
+
+  var texto = '';
+  if (tipo === 'Estadual') {
+    texto = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Assembleia Legislativa do Estado de <strong>' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Casa Legislativa quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da Resolução CGIBS nº [XX], de [data], no Diário Oficial da União nº [XX], de [data], nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional deste Poder Legislativo, para os fins previstos na legislação aplicável.';
+  } else {
+    texto = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Câmara Municipal de <strong>' + mun + ' – ' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Câmara Municipal quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da Resolução CGIBS nº [XX], de [data], no Diário Oficial da União nº [XX], de [data], nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional desta Câmara Municipal, para os fins previstos na legislação aplicável.';
+  }
+  el.innerHTML = texto;
+}
+
+// ═══════════════════════════════════════════════════════════
+// VOTO — mostrar/ocultar motivo de rejeição
+// ═══════════════════════════════════════════════════════════
+function onVotoChange(tipo, voto) {
+  if (voto === 'REJEIÇÃO') {
+    mostrarMotivo(tipo);
+  } else {
+    ocultarMotivo(tipo);
+  }
+  atualizarBotao();
+}
+
+function mostrarMotivo(tipo) {
+  var el = document.getElementById('motivo-wrap-' + tipo);
+  if (el) el.style.display = 'block';
+}
+function ocultarMotivo(tipo) {
+  var el = document.getElementById('motivo-wrap-' + tipo);
+  if (el) { el.style.display = 'none'; var ta = el.querySelector('textarea'); if(ta) ta.value=''; }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ARQUIVO
+// ═══════════════════════════════════════════════════════════
 function validarArquivo(input) {
   var feedback = document.getElementById('upload-feedback');
   arquivoValido = false;
   if (!input.files || !input.files[0]) { atualizarBotao(); return; }
-  var arq = input.files[0];
+  var arq  = input.files[0];
   var nome = arq.name.toLowerCase();
-  var mb   = arq.size / (1024 * 1024);
+  var mb   = arq.size / (1024*1024);
 
   if (arq.type !== 'application/pdf' && !nome.endsWith('.pdf')) {
     feedback.innerHTML = '<span style="color:#c0392b">❌ Apenas PDF é aceito.</span>';
-    input.value = ''; atualizarBotao(); return;
+    input.value=''; atualizarBotao(); return;
   }
   if (mb > 5) {
     feedback.innerHTML = '<span style="color:#c0392b">❌ Arquivo muito grande (' + mb.toFixed(2) + 'MB). Máximo: 5MB.</span>';
-    input.value = ''; atualizarBotao(); return;
+    input.value=''; atualizarBotao(); return;
   }
   arquivoValido = true;
-  // MODO TESTE: qualquer PDF aceito (remover esta linha em produção)
-  feedback.innerHTML = '<span style="color:#168821">✔ Arquivo aceito: ' + arq.name + ' (' + mb.toFixed(2) + 'MB) — Modo Teste</span>';
+  feedback.innerHTML = '<span style="color:#168821">✔ Arquivo aceito: ' + arq.name + ' (' + mb.toFixed(2) + 'MB)</span>';
   atualizarBotao();
 }
 
-// ── Habilitar/desabilitar botão de envio ─────────────────
-function atualizarBotao() {
-  var decl = document.getElementById('declaracao');
-  var ok   = tokenValido && tipoSelecionado && arquivoValido && decl && decl.checked;
-  document.getElementById('btn-enviar').disabled = !ok;
-}
-
-// ── Expandir instruções Gov.br ───────────────────────────
+// ═══════════════════════════════════════════════════════════
+// GOV.BR TOGGLE
+// ═══════════════════════════════════════════════════════════
 function toggleGovBr(btn) {
   var content = document.getElementById('govbr-content');
   var aberto  = content.style.display === 'block';
@@ -86,28 +219,47 @@ function toggleGovBr(btn) {
   btn.querySelector('span').textContent = aberto ? '▼' : '▲';
 }
 
-// ── Envio do formulário ──────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// BOTÃO SUBMIT
+// ═══════════════════════════════════════════════════════════
+function atualizarBotao() {
+  var decl = document.getElementById('declaracao');
+  var ok   = tokenValido && tipoSelecionado && arquivoValido && decl && decl.checked;
+  var btn  = document.getElementById('btn-enviar');
+  if (btn) btn.disabled = !ok;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ENVIO
+// ═══════════════════════════════════════════════════════════
 function enviarFormulario(e) {
   e.preventDefault();
   var erroDiv = document.getElementById('erro-form');
   var erros   = [];
   var tp      = document.getElementById('tipo_poder').value;
 
-  if (!tokenValido)     erros.push('Token inválido.');
-  if (!tp)              erros.push('Selecione o Tipo de Poder Legislativo.');
-  if (!arquivoValido)   erros.push('PDF não validado.');
+  if (!tokenValido) erros.push('Token inválido.');
+  if (!tp)          erros.push('Selecione o Tipo de Poder Legislativo.');
+  if (!arquivoValido) erros.push('PDF não validado.');
   if (!document.getElementById('declaracao').checked) erros.push('Marque a declaração.');
 
+  var votoEl, motivoEl;
   if (tp === 'Estadual') {
-    if (!document.getElementById('uf-est').value)            erros.push('Informe a UF.');
-    if (!document.getElementById('presidente-est').value.trim()) erros.push('Informe o nome do Presidente.');
-    if (!document.querySelector('input[name="voto_estadual"]:checked')) erros.push('Selecione Aprovação ou Rejeição.');
+    if (!document.getElementById('uf-est').value)            erros.push('UF não preenchida.');
+    if (!document.getElementById('presidente-est').value.trim()) erros.push('Nome do Presidente não preenchido.');
+    votoEl  = document.querySelector('input[name="voto_estadual"]:checked');
+    motivoEl = document.getElementById('motivo-estadual');
+    if (!votoEl) erros.push('Selecione Aprovação ou Rejeição.');
+    if (votoEl && votoEl.value === 'REJEIÇÃO' && motivoEl && !motivoEl.value.trim()) erros.push('Informe o motivo da rejeição.');
   }
   if (tp === 'Municipal') {
-    if (!document.getElementById('uf-mun').value)            erros.push('Informe a UF.');
-    if (!document.getElementById('municipio').value.trim())  erros.push('Informe o Município.');
-    if (!document.getElementById('presidente-mun').value.trim()) erros.push('Informe o nome do Presidente.');
-    if (!document.querySelector('input[name="voto_municipal"]:checked')) erros.push('Selecione Aprovação ou Rejeição.');
+    if (!document.getElementById('uf-mun').value)            erros.push('UF não preenchida.');
+    if (!document.getElementById('municipio').value.trim())  erros.push('Município não preenchido.');
+    if (!document.getElementById('presidente-mun').value.trim()) erros.push('Nome do Presidente não preenchido.');
+    votoEl  = document.querySelector('input[name="voto_municipal"]:checked');
+    motivoEl = document.getElementById('motivo-municipal');
+    if (!votoEl) erros.push('Selecione Aprovação ou Rejeição.');
+    if (votoEl && votoEl.value === 'REJEIÇÃO' && motivoEl && !motivoEl.value.trim()) erros.push('Informe o motivo da rejeição.');
   }
 
   if (erros.length > 0) {
@@ -117,16 +269,20 @@ function enviarFormulario(e) {
   }
   erroDiv.style.display = 'none';
 
+  var votoChecked = document.querySelector('input[name="voto_' + tp.toLowerCase() + '"]:checked');
+  var motivoId    = 'motivo-' + tp.toLowerCase();
+  var motivoTa    = document.getElementById(motivoId);
+
   var payload = {
-    token:        document.getElementById('token').value.trim().toUpperCase(),
-    tipo_poder:   tp,
-    uf:           tp === 'Estadual' ? document.getElementById('uf-est').value : document.getElementById('uf-mun').value,
-    municipio:    tp === 'Municipal' ? document.getElementById('municipio').value.trim() : '',
-    presidente:   tp === 'Estadual' ? document.getElementById('presidente-est').value.trim() : document.getElementById('presidente-mun').value.trim(),
-    manifestacao: tp === 'Estadual'
-                    ? (document.querySelector('input[name="voto_estadual"]:checked') ? document.querySelector('input[name="voto_estadual"]:checked').value : '')
-                    : (document.querySelector('input[name="voto_municipal"]:checked') ? document.querySelector('input[name="voto_municipal"]:checked').value : ''),
-    email: ''
+    token:           document.getElementById('token').value.trim().toUpperCase(),
+    tipo_poder:      tp,
+    uf:              tp === 'Estadual' ? document.getElementById('uf-est').value : document.getElementById('uf-mun').value,
+    municipio:       tp === 'Municipal' ? document.getElementById('municipio').value.trim() : '',
+    presidente:      tp === 'Estadual' ? document.getElementById('presidente-est').value.trim() : document.getElementById('presidente-mun').value.trim(),
+    cpf:             tp === 'Estadual' ? document.getElementById('cpf-est').value.trim() : document.getElementById('cpf-mun').value.trim(),
+    manifestacao:    votoChecked ? votoChecked.value : '',
+    motivo_rejeicao: motivoTa ? motivoTa.value.trim() : '',
+    email:           dadosEntidade ? (dadosEntidade.email || '') : ''
   };
 
   var btn = document.getElementById('btn-enviar');
@@ -135,17 +291,17 @@ function enviarFormulario(e) {
 
   fetch(WEBAPP_URL, {
     method: 'POST',
-    mode: 'no-cors',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
-  .then(function() {
-    var protocolo = 'PROT-2026-' + Math.random().toString(36).substr(2,6).toUpperCase();
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var protocolo = data.protocolo || ('PROT-2026-' + Math.random().toString(36).substr(2,8).toUpperCase());
     document.getElementById('num-protocolo').textContent = protocolo;
     document.getElementById('form-manifestacao').style.display = 'none';
     document.getElementById('aviso-topo').style.display = 'none';
     document.getElementById('tela-sucesso').style.display = 'block';
-    window.scrollTo(0, 0);
+    window.scrollTo(0,0);
   })
   .catch(function(err) {
     btn.disabled = false;
@@ -158,7 +314,7 @@ function enviarFormulario(e) {
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1c2b3a; }
-.gov-bar { background: #0c326f; color: rgba(255,255,255,0.75); font-size: 11px; padding: 6px 32px; letter-spacing: 0.03em; }
+.gov-bar { background: #0c326f; color: rgba(255,255,255,0.75); font-size: 11px; padding: 6px 32px; }
 header { background: #fff; border-bottom: 3px solid #ffcd07; padding: 16px 32px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
 header img { height: 44px; }
 .header-div { border-left: 2px solid #c5d0de; padding-left: 16px; margin-left: 4px; }
@@ -177,15 +333,17 @@ header img { height: 44px; }
 label.lbl { display: block; font-size: 0.82rem; font-weight: 700; color: #0c326f; margin-bottom: 6px; }
 .obrig { color: #c0392b; }
 .hint  { font-weight: 400; color: #999; font-size: 0.75rem; margin-left: 6px; }
-input[type=text], select, textarea {
+input[type=text], input[type=email], select, textarea {
   width: 100%; padding: 10px 13px; border: 1.5px solid #c5d0de; border-radius: 6px;
   font-family: inherit; font-size: 0.9rem; color: #1c2b3a; background: #fff;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-input[type=text]:focus, select:focus { outline: none; border-color: #1351b4; box-shadow: 0 0 0 3px rgba(19,81,180,0.1); }
+input[type=text]:focus, select:focus, textarea:focus { outline: none; border-color: #1351b4; box-shadow: 0 0 0 3px rgba(19,81,180,0.1); }
+input[readonly] { background: #f0f4f8; color: #555; cursor: default; }
 select { cursor: pointer; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media(max-width:500px){ .row2 { grid-template-columns: 1fr; } }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+@media(max-width:540px){ .row2,.row3 { grid-template-columns: 1fr; } }
 
 /* Token */
 .token-wrap { position: relative; }
@@ -196,16 +354,53 @@ select { cursor: pointer; }
 /* Tipo btns */
 .tipo-btns { display: flex; gap: 12px; }
 @media(max-width:440px){ .tipo-btns { flex-direction: column; } }
-.tipo-btn {
-  flex: 1; border: 2px solid #c5d0de; border-radius: 8px; padding: 14px 10px;
-  text-align: center; cursor: pointer; font-size: 0.84rem; font-weight: 500; color: #555;
-  background: #fff; transition: all 0.18s; line-height: 1.4; user-select: none;
-}
+.tipo-btn { flex: 1; border: 2px solid #c5d0de; border-radius: 8px; padding: 14px 10px; text-align: center; cursor: pointer; font-size: 0.84rem; font-weight: 500; color: #555; background: #fff; transition: all 0.18s; line-height: 1.4; user-select: none; }
 .tipo-btn .icone { font-size: 1.7rem; display: block; margin-bottom: 6px; }
 .tipo-btn:hover { border-color: #1351b4; color: #1351b4; background: #eef4ff; }
 .tipo-btn.ativo  { border-color: #1351b4; background: #d4e5ff; color: #0c326f; font-weight: 700; }
 
-/* Download box */
+/* Texto da manifestação */
+.texto-manifestacao-box {
+  background: #f8faff;
+  border: 1px solid #c5d0de;
+  border-left: 4px solid #1351b4;
+  border-radius: 6px;
+  padding: 16px 18px;
+  font-size: 0.87rem;
+  color: #333;
+  line-height: 1.8;
+  margin-bottom: 18px;
+  font-style: italic;
+}
+.texto-manifestacao-box .label-topo {
+  font-size: 0.72rem; font-weight: 700; color: #1351b4;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  display: block; margin-bottom: 8px; font-style: normal;
+}
+
+/* Voto */
+.voto-opcoes { display: flex; gap: 12px; }
+@media(max-width:420px){ .voto-opcoes { flex-direction: column; } }
+.voto-label { flex: 1; border: 2px solid #c5d0de; border-radius: 8px; padding: 13px; cursor: pointer; text-align: center; font-weight: 600; font-size: 0.9rem; transition: all 0.18s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.voto-label:hover { background: #f8f8f8; border-color: #888; }
+.voto-label input { display: none; }
+.voto-label.selecionado-apr { border-color: #168821; background: #f0fff4; color: #0a4410; }
+.voto-label.selecionado-rej { border-color: #c0392b; background: #fdecea; color: #7a1010; }
+
+/* Motivo rejeição */
+.motivo-wrap {
+  display: none;
+  margin-top: 14px;
+  background: #fdecea;
+  border: 1px solid #e8a09a;
+  border-left: 4px solid #c0392b;
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.motivo-wrap label.lbl { color: #c0392b; }
+.motivo-wrap textarea { border-color: #e8a09a; min-height: 80px; resize: vertical; }
+
+/* Download box — movido para seção 3 */
 .dl-box { background: #eef4ff; border: 1.5px dashed #1351b4; border-radius: 8px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
 .dl-box .dl-icone { font-size: 1.8rem; flex-shrink: 0; }
 .dl-box .dl-txt { flex: 1; min-width: 160px; }
@@ -213,13 +408,6 @@ select { cursor: pointer; }
 .dl-box .dl-txt span   { font-size: 0.76rem; color: #666; }
 .btn-dl { background: #1351b4; color: #fff; border: none; border-radius: 6px; padding: 9px 16px; font-size: 0.8rem; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; white-space: nowrap; transition: background 0.2s; }
 .btn-dl:hover { background: #0c326f; }
-
-/* Voto */
-.voto-opcoes { display: flex; gap: 12px; }
-@media(max-width:420px){ .voto-opcoes { flex-direction: column; } }
-.voto-label { flex: 1; border: 2px solid #c5d0de; border-radius: 8px; padding: 13px; cursor: pointer; text-align: center; font-weight: 600; font-size: 0.9rem; transition: all 0.18s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-.voto-label:hover { border-color: #888; background: #f8f8f8; }
-.voto-label input { display: none; }
 
 /* Upload */
 .upload-zone { border: 2px dashed #c5d0de; border-radius: 8px; padding: 26px 18px; text-align: center; cursor: pointer; transition: all 0.18s; position: relative; }
@@ -230,7 +418,7 @@ select { cursor: pointer; }
 .upload-zone .up-txt strong { color: #1351b4; }
 #upload-feedback { font-size: 0.81rem; margin-top: 8px; min-height: 18px; }
 
-/* Gov.br box */
+/* Gov.br */
 .govbr-box { background: #fff; border: 1px solid #bbd4f5; border-radius: 8px; overflow: hidden; margin-bottom: 18px; }
 .govbr-btn { background: #eef4ff; border: none; width: 100%; text-align: left; padding: 13px 18px; font-family: inherit; font-size: 0.87rem; font-weight: 700; color: #0c326f; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
 .govbr-btn:hover { background: #ddeaff; }
@@ -239,7 +427,6 @@ select { cursor: pointer; }
 .govbr-steps li { counter-increment: st; padding: 9px 0 9px 40px; position: relative; font-size: 0.83rem; line-height: 1.6; border-bottom: 1px solid #eef; }
 .govbr-steps li:last-child { border-bottom: none; }
 .govbr-steps li::before { content: counter(st); position: absolute; left: 0; top: 9px; width: 26px; height: 26px; background: #1351b4; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.77rem; font-weight: 700; }
-.govbr-steps li strong { color: #0c326f; }
 
 /* Declaração */
 .decl-wrap { display: flex; gap: 12px; align-items: flex-start; background: #f9fafc; border: 1.5px solid #c5d0de; border-radius: 8px; padding: 14px; cursor: pointer; }
@@ -250,8 +437,6 @@ select { cursor: pointer; }
 .btn-enviar { width: 100%; padding: 15px; background: #1351b4; color: #fff; border: none; border-radius: 8px; font-family: inherit; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 10px; letter-spacing: 0.03em; transition: background 0.2s, box-shadow 0.2s; }
 .btn-enviar:hover:not(:disabled) { background: #0c326f; box-shadow: 0 4px 16px rgba(19,81,180,0.3); }
 .btn-enviar:disabled { background: #aac0e0; cursor: not-allowed; }
-
-/* Erro */
 #erro-form { display: none; background: #fdecea; border: 1px solid #e74c3c; border-radius: 6px; padding: 12px 16px; font-size: 0.84rem; color: #c0392b; margin-bottom: 14px; }
 
 /* Sucesso */
@@ -262,7 +447,6 @@ select { cursor: pointer; }
 .protocolo { background: #f0f4f8; border-radius: 6px; padding: 11px 20px; display: inline-block; font-family: monospace; font-size: 1rem; margin: 12px 0; letter-spacing: 0.06em; color: #0c326f; }
 
 footer { background: #0c326f; color: rgba(255,255,255,0.55); text-align: center; font-size: 0.73rem; padding: 18px; line-height: 1.7; }
-footer a { color: rgba(255,255,255,0.75); }
 </style>
 </head>
 <body>
@@ -270,7 +454,7 @@ footer a { color: rgba(255,255,255,0.75); }
 <div class="gov-bar">🔒 Portal Oficial do Governo Federal &nbsp;|&nbsp; Ambiente Seguro</div>
 
 <header>
-  <img src="data:image/jpeg;base64,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" alt="CGIBS" onerror="this.style.display='none'">
+  <img src="data:image/jpeg;base64,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" alt="CGIBS" onerror="this.style.display='none'">
   <div class="header-div">
     <h1>Manifestação do Poder Legislativo sobre a Proposta Orçamentária do CGIBS</h1>
     <p>Exercício Financeiro de 2026 — Formulário Oficial de Coleta de Manifestações</p>
@@ -287,7 +471,7 @@ footer a { color: rgba(255,255,255,0.75); }
 
   <form id="form-manifestacao" onsubmit="enviarFormulario(event)">
 
-    <!-- CARD 1 -->
+    <!-- ══ CARD 1: IDENTIFICAÇÃO ══ -->
     <div class="card">
       <div class="card-header" style="background:#1351b4;">
         <span class="step-num">1</span> Identificação e Acesso
@@ -320,110 +504,145 @@ footer a { color: rgba(255,255,255,0.75); }
       </div>
     </div>
 
-    <!-- CARD 2A: ESTADUAL -->
+    <!-- ══ CARD 2A: ESTADUAL ══ -->
     <div class="card" id="secao-estadual" style="display:none;">
       <div class="card-header" style="background:#0c5f4a;">
-        <span class="step-num">2</span> Dados — Assembleia Legislativa Estadual
+        <span class="step-num">2</span> Dados e Manifestação — Assembleia Legislativa Estadual
       </div>
       <div class="card-body">
-        <div class="dl-box">
-          <div class="dl-icone">📄</div>
-          <div class="dl-txt">
-            <strong>Modelo Oficial — Manifestação Estadual</strong>
-            <span>Baixe, preencha, assine pelo Gov.br e retorne aqui</span>
-          </div>
-          <a href="LINK_MODELO_ESTADUAL_DRIVE" class="btn-dl">⬇ Baixar Modelo</a>
+
+        <!-- Texto da manifestação preenchido -->
+        <div class="texto-manifestacao-box">
+          <span class="label-topo">📄 Texto oficial da manifestação</span>
+          <div id="texto-manifestacao">Selecione o tipo de Poder Legislativo para visualizar o texto.</div>
         </div>
-        <div class="row2">
+
+        <div class="row3">
           <div class="field">
             <label class="lbl" for="uf-est">Estado (UF) <span class="obrig">*</span></label>
-            <select id="uf-est" name="uf_estadual">
-              <option value="">Selecione...</option>
-              <option>AC</option><option>AL</option><option>AM</option><option>AP</option>
-              <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
-              <option>GO</option><option>MA</option><option>MG</option><option>MS</option>
-              <option>MT</option><option>PA</option><option>PB</option><option>PE</option>
-              <option>PI</option><option>PR</option><option>RJ</option><option>RN</option>
-              <option>RO</option><option>RR</option><option>RS</option><option>SC</option>
-              <option>SE</option><option>SP</option><option>TO</option>
-            </select>
+            <input type="text" id="uf-est" name="uf_estadual" placeholder="SC" maxlength="2" readonly>
           </div>
-          <div class="field">
+          <div class="field" style="grid-column: span 2;">
             <label class="lbl" for="presidente-est">Nome do Presidente <span class="obrig">*</span></label>
-            <input type="text" id="presidente-est" name="presidente_estadual" placeholder="Nome conforme CPF/Gov.br">
+            <input type="text" id="presidente-est" name="presidente_estadual" placeholder="Preenchido automaticamente pelo token" readonly>
           </div>
         </div>
+        <div class="field">
+          <label class="lbl" for="cpf-est">CPF do Presidente <span class="obrig">*</span></label>
+          <input type="text" id="cpf-est" name="cpf_estadual" placeholder="Preenchido automaticamente pelo token" readonly>
+        </div>
+
         <div class="field">
           <label class="lbl">Manifestação desta Casa Legislativa <span class="obrig">*</span></label>
           <div class="voto-opcoes">
-            <label class="voto-label" style="border-color:#c5d0de;" onmouseover="this.style.borderColor='#168821'" onmouseout="if(!document.querySelector('input[name=voto_estadual]:checked'))this.style.borderColor='#c5d0de'">
-              <input type="radio" name="voto_estadual" value="APROVAÇÃO"> ✅ APROVAÇÃO
+            <label class="voto-label" id="label-apr-est">
+              <input type="radio" name="voto_estadual" value="APROVAÇÃO"
+                onchange="onVotoChange('estadual','APROVAÇÃO'); this.closest('.voto-label').className='voto-label selecionado-apr'; document.getElementById('label-rej-est').className='voto-label';">
+              ✅ APROVAÇÃO
             </label>
-            <label class="voto-label" style="border-color:#c5d0de;" onmouseover="this.style.borderColor='#c0392b'" onmouseout="if(!document.querySelector('input[name=voto_estadual]:checked'))this.style.borderColor='#c5d0de'">
-              <input type="radio" name="voto_estadual" value="REJEIÇÃO"> ❌ REJEIÇÃO
+            <label class="voto-label" id="label-rej-est">
+              <input type="radio" name="voto_estadual" value="REJEIÇÃO"
+                onchange="onVotoChange('estadual','REJEIÇÃO'); this.closest('.voto-label').className='voto-label selecionado-rej'; document.getElementById('label-apr-est').className='voto-label';">
+              ❌ REJEIÇÃO
             </label>
           </div>
         </div>
+
+        <!-- Motivo rejeição — item 2 -->
+        <div class="motivo-wrap" id="motivo-wrap-estadual">
+          <label class="lbl" for="motivo-estadual">Motivo da Rejeição <span class="obrig">*</span></label>
+          <p style="font-size:0.8rem;color:#c0392b;margin-bottom:8px;">Em caso de rejeição da proposta orçamentária, especificar o motivo da rejeição para análise pelo CGIBS.</p>
+          <textarea id="motivo-estadual" name="motivo_rejeicao_estadual" rows="4" placeholder="Descreva o motivo da rejeição da proposta orçamentária..."></textarea>
+        </div>
+
       </div>
     </div>
 
-    <!-- CARD 2B: MUNICIPAL -->
+    <!-- ══ CARD 2B: MUNICIPAL ══ -->
     <div class="card" id="secao-municipal" style="display:none;">
       <div class="card-header" style="background:#7b3f00;">
-        <span class="step-num">2</span> Dados — Câmara Municipal
+        <span class="step-num">2</span> Dados e Manifestação — Câmara Municipal
       </div>
       <div class="card-body">
-        <div class="dl-box" style="border-color:#b07300;background:#fff8ee;">
-          <div class="dl-icone">📄</div>
-          <div class="dl-txt">
-            <strong>Modelo Oficial — Manifestação Municipal</strong>
-            <span>Baixe, preencha, assine pelo Gov.br e retorne aqui</span>
-          </div>
-          <a href="LINK_MODELO_MUNICIPAL_DRIVE" class="btn-dl" style="background:#b07300;">⬇ Baixar Modelo</a>
+
+        <!-- Texto da manifestação preenchido -->
+        <div class="texto-manifestacao-box" style="border-left-color:#7b3f00;">
+          <span class="label-topo" style="color:#7b3f00;">📄 Texto oficial da manifestação</span>
+          <div id="texto-manifestacao-mun">Selecione o tipo de Poder Legislativo para visualizar o texto.</div>
         </div>
+
         <div class="row2">
           <div class="field">
             <label class="lbl" for="uf-mun">Estado (UF) <span class="obrig">*</span></label>
-            <select id="uf-mun" name="uf_municipal">
-              <option value="">Selecione...</option>
-              <option>AC</option><option>AL</option><option>AM</option><option>AP</option>
-              <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
-              <option>GO</option><option>MA</option><option>MG</option><option>MS</option>
-              <option>MT</option><option>PA</option><option>PB</option><option>PE</option>
-              <option>PI</option><option>PR</option><option>RJ</option><option>RN</option>
-              <option>RO</option><option>RR</option><option>RS</option><option>SC</option>
-              <option>SE</option><option>SP</option><option>TO</option>
-            </select>
+            <input type="text" id="uf-mun" name="uf_municipal" placeholder="SC" maxlength="2" readonly>
           </div>
           <div class="field">
             <label class="lbl" for="municipio">Município <span class="obrig">*</span></label>
-            <input type="text" id="municipio" name="municipio" placeholder="Ex: Florianópolis">
+            <input type="text" id="municipio" name="municipio" placeholder="Preenchido automaticamente" readonly>
           </div>
         </div>
-        <div class="field">
-          <label class="lbl" for="presidente-mun">Nome do Presidente <span class="obrig">*</span></label>
-          <input type="text" id="presidente-mun" name="presidente_municipal" placeholder="Nome conforme CPF/Gov.br">
+        <div class="row2">
+          <div class="field">
+            <label class="lbl" for="presidente-mun">Nome do Presidente <span class="obrig">*</span></label>
+            <input type="text" id="presidente-mun" name="presidente_municipal" placeholder="Preenchido automaticamente pelo token" readonly>
+          </div>
+          <div class="field">
+            <label class="lbl" for="cpf-mun">CPF do Presidente <span class="obrig">*</span></label>
+            <input type="text" id="cpf-mun" name="cpf_municipal" placeholder="Preenchido automaticamente pelo token" readonly>
+          </div>
         </div>
+
         <div class="field">
           <label class="lbl">Manifestação desta Câmara Municipal <span class="obrig">*</span></label>
           <div class="voto-opcoes">
-            <label class="voto-label" style="border-color:#c5d0de;">
-              <input type="radio" name="voto_municipal" value="APROVAÇÃO"> ✅ APROVAÇÃO
+            <label class="voto-label" id="label-apr-mun">
+              <input type="radio" name="voto_municipal" value="APROVAÇÃO"
+                onchange="onVotoChange('municipal','APROVAÇÃO'); this.closest('.voto-label').className='voto-label selecionado-apr'; document.getElementById('label-rej-mun').className='voto-label';">
+              ✅ APROVAÇÃO
             </label>
-            <label class="voto-label" style="border-color:#c5d0de;">
-              <input type="radio" name="voto_municipal" value="REJEIÇÃO"> ❌ REJEIÇÃO
+            <label class="voto-label" id="label-rej-mun">
+              <input type="radio" name="voto_municipal" value="REJEIÇÃO"
+                onchange="onVotoChange('municipal','REJEIÇÃO'); this.closest('.voto-label').className='voto-label selecionado-rej'; document.getElementById('label-apr-mun').className='voto-label';">
+              ❌ REJEIÇÃO
             </label>
           </div>
         </div>
+
+        <!-- Motivo rejeição — item 2 -->
+        <div class="motivo-wrap" id="motivo-wrap-municipal">
+          <label class="lbl" for="motivo-municipal">Motivo da Rejeição <span class="obrig">*</span></label>
+          <p style="font-size:0.8rem;color:#c0392b;margin-bottom:8px;">Em caso de rejeição da proposta orçamentária, especificar o motivo da rejeição para análise pelo CGIBS.</p>
+          <textarea id="motivo-municipal" name="motivo_rejeicao_municipal" rows="4" placeholder="Descreva o motivo da rejeição da proposta orçamentária..."></textarea>
+        </div>
+
       </div>
     </div>
 
-    <!-- CARD 3: UPLOAD -->
+    <!-- ══ CARD 3: ASSINATURA + UPLOAD ══ -->
     <div class="card" id="secao-upload" style="display:none;">
       <div class="card-header" style="background:#2f5597;">
-        <span class="step-num">3</span> Assinatura Gov.br e Envio do Documento
+        <span class="step-num">3</span> Arquivo para Assinatura e Envio do Documento
       </div>
       <div class="card-body">
+
+        <!-- Item 1 e 4: Baixar arquivo para assinatura movido para cá -->
+        <div class="dl-box" id="dl-estadual" style="display:none;">
+          <div class="dl-icone">📄</div>
+          <div class="dl-txt">
+            <strong>⬇ Baixar Arquivo para Assinatura — Modelo Estadual</strong>
+            <span>Baixe, preencha os campos em aberto, salve como PDF e assine pelo Gov.br antes de anexar abaixo</span>
+          </div>
+          <a href="LINK_MODELO_ESTADUAL_DRIVE" class="btn-dl" id="link-dl-estadual">⬇ Baixar</a>
+        </div>
+        <div class="dl-box" id="dl-municipal" style="display:none; border-color:#b07300; background:#fff8ee;">
+          <div class="dl-icone">📄</div>
+          <div class="dl-txt">
+            <strong>⬇ Baixar Arquivo para Assinatura — Modelo Municipal</strong>
+            <span>Baixe, preencha os campos em aberto, salve como PDF e assine pelo Gov.br antes de anexar abaixo</span>
+          </div>
+          <a href="LINK_MODELO_MUNICIPAL_DRIVE" class="btn-dl" id="link-dl-municipal" style="background:#b07300;">⬇ Baixar</a>
+        </div>
+
         <div class="govbr-box">
           <button type="button" class="govbr-btn" onclick="toggleGovBr(this)">
             📋 Como assinar pelo Gov.br — clique para expandir
@@ -431,14 +650,15 @@ footer a { color: rgba(255,255,255,0.75); }
           </button>
           <div id="govbr-content">
             <ol class="govbr-steps">
-              <li><strong>Preencha o modelo baixado</strong> — complete os campos entre colchetes e salve como PDF.</li>
-              <li><strong>Acesse</strong> <a href="https://assinador.iti.br" target="_blank">assinador.iti.br</a> com conta Gov.br <strong>Prata ou Ouro</strong>. Bronze não tem validade jurídica.</li>
-              <li><strong>Assine</strong> — clique em "Assinar documento", faça upload do PDF e confirme.</li>
-              <li><strong>Baixe o arquivo assinado</strong> — terá o prefixo <code>signed-</code> no nome.</li>
-              <li><strong>Anexe abaixo</strong> o arquivo <code>signed-[nome].pdf</code>.</li>
+              <li>Baixe o arquivo acima e preencha os campos em aberto (data, número da Resolução CGIBS, local). O nome, UF e voto já constam do formulário. Salve como PDF.</li>
+              <li>Acesse <a href="https://assinador.iti.br" target="_blank">assinador.iti.br</a> com conta Gov.br <strong>Prata ou Ouro</strong>. Bronze não tem validade jurídica.</li>
+              <li>Clique em "Assinar documento", faça upload do PDF e confirme sua identidade.</li>
+              <li>Baixe o arquivo assinado — terá o prefixo <code>signed-</code> no nome.</li>
+              <li>Retorne aqui e anexe o arquivo <code>signed-[nome].pdf</code> abaixo.</li>
             </ol>
           </div>
         </div>
+
         <div class="field">
           <label class="lbl">Documento PDF assinado digitalmente <span class="obrig">*</span> <span class="hint">Somente PDF · Máx. 5MB</span></label>
           <div class="upload-zone">
@@ -448,10 +668,11 @@ footer a { color: rgba(255,255,255,0.75); }
           </div>
           <div id="upload-feedback"></div>
         </div>
+
       </div>
     </div>
 
-    <!-- CARD 4: DECLARAÇÃO -->
+    <!-- ══ CARD 4: DECLARAÇÃO ══ -->
     <div class="card" id="secao-declaracao" style="display:none;">
       <div class="card-header" style="background:#1c2b3a;">
         <span class="step-num">4</span> Declaração e Envio
@@ -473,13 +694,13 @@ footer a { color: rgba(255,255,255,0.75); }
 
   </form>
 
-  <!-- TELA DE SUCESSO -->
+  <!-- SUCESSO -->
   <div id="tela-sucesso">
     <div class="ok-icone">✅</div>
     <h2>Manifestação Registrada com Sucesso</h2>
     <p>A manifestação desta Casa Legislativa foi recebida e registrada pelo sistema do CGIBS.</p>
     <div class="protocolo" id="num-protocolo">PROT-2026-XXXXXX</div>
-    <p>Guarde este número de protocolo. Em caso de dúvidas, contate a Secretaria Executiva do CGIBS.</p>
+    <p>Guarde este número de protocolo. Em caso de dúvidas, contate a Secretaria Executiva do CGIBS informando este código.</p>
     <p style="margin-top:20px;font-size:0.76rem;color:#bbb;">Este formulário pode ser fechado com segurança.</p>
   </div>
 
@@ -490,5 +711,28 @@ footer a { color: rgba(255,255,255,0.75); }
   Lei Complementar nº 214, de 16 de janeiro de 2025
 </footer>
 
+<script>
+// Exibe os botões de download corretos conforme o tipo selecionado
+// e atualiza o texto da manifestação para a seção municipal
+var _origSelecionarTipo = selecionarTipo;
+selecionarTipo = function(tipo) {
+  _origSelecionarTipo(tipo);
+
+  // Exibe o download correto
+  var dlE = document.getElementById('dl-estadual');
+  var dlM = document.getElementById('dl-municipal');
+  if (dlE) dlE.style.display = tipo === 'Estadual' ? 'flex' : 'none';
+  if (dlM) dlM.style.display = tipo === 'Municipal' ? 'flex' : 'none';
+
+  // Atualiza texto da manifestação municipal (usa div diferente)
+  if (tipo === 'Municipal') {
+    var nome = (dadosEntidade && dadosEntidade.presidente) ? dadosEntidade.presidente : '[NOME COMPLETO]';
+    var uf   = (dadosEntidade && dadosEntidade.uf)          ? dadosEntidade.uf          : '[UF]';
+    var mun  = (dadosEntidade && dadosEntidade.municipio)   ? dadosEntidade.municipio   : '[NOME DO MUNICÍPIO]';
+    var elM  = document.getElementById('texto-manifestacao-mun');
+    if (elM) elM.innerHTML = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Câmara Municipal de <strong>' + mun + ' – ' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Câmara Municipal quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da Resolução CGIBS nº [XX], de [data], no Diário Oficial da União nº [XX], de [data], nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional desta Câmara Municipal, para os fins previstos na legislação aplicável.';
+  }
+};
+</script>
 </body>
 </html>
