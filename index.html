@@ -10,6 +10,22 @@
 // ═══════════════════════════════════════════════════════════
 var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw08Jel2p2GYo1Uj1JSBs-Ym3osY3WIKnEo15mtw0PWRjsuGawpEqczhESl4icrNa3Xtw/exec';
 
+function getDataHoje() {
+  var agora = new Date();
+  var data  = agora.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  var hora  = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return data + ' às ' + hora;
+}
+
+function preencherDataNoTexto() {
+  var dataHoje = getDataHoje();
+  ['estadual','municipal'].forEach(function(t) {
+    var span = document.getElementById('data-manifestacao-' + t);
+    if (span) span.textContent = dataHoje;
+  });
+  return dataHoje;
+}
+
 // ═══════════════════════════════════════════════════════════
 // ESTADO
 // ═══════════════════════════════════════════════════════════
@@ -171,6 +187,8 @@ function atualizarTextoManifestacao(tipo) {
     texto = 'Eu, <strong>' + nome + '</strong>, na qualidade de Presidente da Câmara Municipal de <strong>' + mun + ' – ' + uf + '</strong>, no exercício da competência institucional deste Poder Legislativo, venho, por meio deste instrumento, manifestar formalmente a posição desta Câmara Municipal quanto à Proposta Orçamentária do Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) para o exercício financeiro de 2026, aprovada pelo Conselho Superior e publicada por meio da <strong>' + resolucao + '</strong>, no Diário Oficial da União, nos seguintes termos:<br><br>Declaro que a presente manifestação reflete a deliberação institucional desta Câmara Municipal, para os fins previstos na legislação aplicável.<br><br><em>Data da manifestação: ' + dataSpan + '</em>';
   }
   el.innerHTML = texto;
+  // Preenche a data imediatamente após montar o texto
+  preencherDataNoTexto();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -298,16 +316,9 @@ function enviarFormulario(e) {
   btn.disabled = true;
   btn.innerHTML = '⏳ Enviando...';
 
-  // Gera e injeta a data do envio no texto da manifestação
-  var agora = new Date();
-  var dataEnvio = agora.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  var horaEnvio = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  var dataCompleta = dataEnvio + ' às ' + horaEnvio;
-  ['estadual','municipal'].forEach(function(t) {
-    var spanData = document.getElementById('data-manifestacao-' + t);
-    if (spanData) spanData.textContent = dataCompleta;
-  });
-  payload.data_manifestacao = dataCompleta;
+  // Atualiza data para o momento exato do envio e inclui no payload
+  var dataEnvio = preencherDataNoTexto();
+  payload.data_manifestacao = dataEnvio;
 
   // PASSO 1: GET reserva o protocolo no servidor (CORS liberado em GET)
   fetch(WEBAPP_URL + '?reservar=1&t=' + Date.now(), { mode: 'cors' })
@@ -326,6 +337,8 @@ function enviarFormulario(e) {
       .then(function() {
         // Exibe o mesmo protocolo que foi gravado na planilha
         document.getElementById('num-protocolo').textContent = protocolo;
+        var dsEl = document.getElementById('data-sucesso');
+        if (dsEl) dsEl.textContent = dataEnvio;
         document.getElementById('form-manifestacao').style.display = 'none';
         document.getElementById('aviso-topo').style.display = 'none';
         document.getElementById('tela-sucesso').style.display = 'block';
@@ -735,6 +748,7 @@ footer { background: #0c326f; color: rgba(255,255,255,0.55); text-align: center;
     <h2>Manifestação Registrada com Sucesso</h2>
     <p>A manifestação desta Casa Legislativa foi recebida e registrada pelo sistema do CGIBS.</p>
     <div class="protocolo" id="num-protocolo">PROT-2026-XXXXXX</div>
+    <p style="font-size:0.82rem;color:#888;margin-top:4px;">Data e hora do registro: <strong id="data-sucesso" style="color:#1351b4;">—</strong></p>
     <p>Guarde este número de protocolo. Em caso de dúvidas, contate a Secretaria Executiva do CGIBS informando este código.</p>
     <p style="margin-top:20px;font-size:0.76rem;color:#bbb;">Este formulário pode ser fechado com segurança.</p>
   </div>
