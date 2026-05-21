@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manifestação Orçamentária CGIBS 2026</title>
+<script>
+// ═══════════════════════════════════════════════════════════
+// CGIBS — Formulário de Manifestação Orçamentária 2026
+// Todas as funções definidas aqui no <head>, antes do HTML
+// ═══════════════════════════════════════════════════════════
+
+var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbz7vU6yzpiMSEcVO_8KMXaBtgOFo_hRNp_o_WjrrChmYR_V7rxd0xN22nZWjGfUcryz8w/exec';
+var tipoSelecionado = null;
+var arquivoValido   = false;
+var tokenValido     = false;
+
+// ── Mostrar/ocultar seções conforme tipo selecionado ─────
+function selecionarTipo(tipo) {
+  tipoSelecionado = tipo;
+  document.getElementById('tipo_poder').value = tipo;
+
+  document.getElementById('btn-estadual').className =
+    'tipo-btn' + (tipo === 'Estadual' ? ' ativo' : '');
+  document.getElementById('btn-municipal').className =
+    'tipo-btn' + (tipo === 'Municipal' ? ' ativo' : '');
+
+  document.getElementById('secao-estadual').style.display =
+    tipo === 'Estadual' ? 'block' : 'none';
+  document.getElementById('secao-municipal').style.display =
+    tipo === 'Municipal' ? 'block' : 'none';
+  document.getElementById('secao-upload').style.display    = 'block';
+  document.getElementById('secao-declaracao').style.display = 'block';
+
+  atualizarBotao();
+}
+
+// ── Validação do token ───────────────────────────────────
+function validarToken(input) {
+  var val = input.value.toUpperCase().replace(/\s/g,'');
+  input.value = val;
+  var status = document.getElementById('token-status');
+  var ok = /^ORC2026-[A-Z]{2,}-[A-Z]{2,3}-\d{3}$/.test(val);
+  tokenValido = ok;
+  status.innerHTML = val.length === 0 ? '' :
+    ok ? '<span style="color:#168821">✔ Token válido</span>'
+       : '<span style="color:#c0392b">✘ Formato inválido. Ex: ORC2026-SC-EST-001</span>';
+  atualizarBotao();
+}
+
+// ── Validação do arquivo PDF ─────────────────────────────
+function validarArquivo(input) {
+  var feedback = document.getElementById('upload-feedback');
+  arquivoValido = false;
+  if (!input.files || !input.files[0]) { atualizarBotao(); return; }
+  var arq = input.files[0];
+  var nome = arq.name.toLowerCase();
+  var mb   = arq.size / (1024 * 1024);
+
+  if (arq.type !== 'application/pdf' && !nome.endsWith('.pdf')) {
+    feedback.innerHTML = '<span style="color:#c0392b">❌ Apenas PDF é aceito.</span>';
+    input.value = ''; atualizarBotao(); return;
+  }
+  if (mb > 5) {
+    feedback.innerHTML = '<span style="color:#c0392b">❌ Arquivo muito grande (' + mb.toFixed(2) + 'MB). Máximo: 5MB.</span>';
+    input.value = ''; atualizarBotao(); return;
+  }
+  arquivoValido = true;
+  var aviso = !nome.startsWith('signed-')
+    ? '<span style="color:#b07300">⚠️ Arquivo não começa com "signed-". Confirme que é o PDF assinado pelo Gov.br.</span>'
+    : '<span style="color:#168821">✔ Arquivo válido: ' + arq.name + ' (' + mb.toFixed(2) + 'MB)</span>';
+  feedback.innerHTML = aviso;
+  atualizarBotao();
+}
+
+// ── Habilitar/desabilitar botão de envio ─────────────────
+function atualizarBotao() {
+  var decl = document.getElementById('declaracao');
+  var ok   = tokenValido && tipoSelecionado && arquivoValido && decl && decl.checked;
+  document.getElementById('btn-enviar').disabled = !ok;
+}
+
+// ── Expandir instruções Gov.br ───────────────────────────
+function toggleGovBr(btn) {
+  var content = document.getElementById('govbr-content');
+  var aberto  = content.style.display === 'block';
+  content.style.display = aberto ? 'none' : 'block';
+  btn.querySelector('span').textContent = aberto ? '▼' : '▲';
+}
+
+// ── Envio do formulário ──────────────────────────────────
+function enviarFormulario(e) {
+  e.preventDefault();
+  var erroDiv = document.getElementById('erro-form');
+  var erros   = [];
+  var tp      = document.getElementById('tipo_poder').value;
+
+  if (!tokenValido)     erros.push('Token inválido.');
+  if (!tp)              erros.push('Selecione o Tipo de Poder Legislativo.');
+  if (!arquivoValido)   erros.push('PDF não validado.');
+  if (!document.getElementById('declaracao').checked) erros.push('Marque a declaração.');
+
+  if (tp === 'Estadual') {
+    if (!document.getElementById('uf-est').value)            erros.push('Informe a UF.');
+    if (!document.getElementById('presidente-est').value.trim()) erros.push('Informe o nome do Presidente.');
+    if (!document.querySelector('input[name="voto_estadual"]:checked')) erros.push('Selecione Aprovação ou Rejeição.');
+  }
+  if (tp === 'Municipal') {
+    if (!document.getElementById('uf-mun').value)            erros.push('Informe a UF.');
+    if (!document.getElementById('municipio').value.trim())  erros.push('Informe o Município.');
+    if (!document.getElementById('presidente-mun').value.trim()) erros.push('Informe o nome do Presidente.');
+    if (!document.querySelector('input[name="voto_municipal"]:checked')) erros.push('Selecione Aprovação ou Rejeição.');
+  }
+
+  if (erros.length > 0) {
+    erroDiv.style.display = 'block';
+    erroDiv.innerHTML = '⚠️ ' + erros.join(' • ');
+    return;
+  }
+  erroDiv.style.display = 'none';
+
+  var payload = {
+    token:        document.getElementById('token').value.trim().toUpperCase(),
+    tipo_poder:   tp,
+    uf:           tp === 'Estadual' ? document.getElementById('uf-est').value : document.getElementById('uf-mun').value,
+    municipio:    tp === 'Municipal' ? document.getElementById('municipio').value.trim() : '',
+    presidente:   tp === 'Estadual' ? document.getElementById('presidente-est').value.trim() : document.getElementById('presidente-mun').value.trim(),
+    manifestacao: tp === 'Estadual'
+                    ? (document.querySelector('input[name="voto_estadual"]:checked') ? document.querySelector('input[name="voto_estadual"]:checked').value : '')
+                    : (document.querySelector('input[name="voto_municipal"]:checked') ? document.querySelector('input[name="voto_municipal"]:checked').value : ''),
+    email: ''
+  };
+
+  var btn = document.getElementById('btn-enviar');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Enviando...';
+
+  fetch(WEBAPP_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function() {
+    var protocolo = 'PROT-2026-' + Math.random().toString(36).substr(2,6).toUpperCase();
+    document.getElementById('num-protocolo').textContent = protocolo;
+    document.getElementById('form-manifestacao').style.display = 'none';
+    document.getElementById('aviso-topo').style.display = 'none';
+    document.getElementById('tela-sucesso').style.display = 'block';
+    window.scrollTo(0, 0);
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.innerHTML = '🔒 Enviar Manifestação Oficial';
+    erroDiv.style.display = 'block';
+    erroDiv.innerHTML = '❌ Erro de conexão. Verifique sua internet e tente novamente.';
+  });
+}
+</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1c2b3a; }
+.gov-bar { background: #0c326f; color: rgba(255,255,255,0.75); font-size: 11px; padding: 6px 32px; letter-spacing: 0.03em; }
+header { background: #fff; border-bottom: 3px solid #ffcd07; padding: 16px 32px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+header img { height: 44px; }
+.header-div { border-left: 2px solid #c5d0de; padding-left: 16px; margin-left: 4px; }
+.header-div h1 { font-size: 1rem; font-weight: 700; color: #0c326f; line-height: 1.3; }
+.header-div p  { font-size: 0.75rem; color: #777; margin-top: 3px; }
+.badge { background: #d4e5ff; color: #0c326f; font-size: 0.7rem; font-weight: 700; padding: 4px 10px; border-radius: 20px; margin-left: auto; white-space: nowrap; }
+.page { max-width: 760px; margin: 32px auto; padding: 0 16px 60px; }
+.aviso { background: #fffbea; border: 1px solid #f0c040; border-left: 4px solid #ffcd07; border-radius: 6px; padding: 14px 18px; font-size: 0.84rem; color: #5a4100; margin-bottom: 24px; line-height: 1.6; }
+.aviso strong { display: block; margin-bottom: 4px; }
+.card { background: #fff; border-radius: 10px; box-shadow: 0 2px 14px rgba(19,81,180,0.09); overflow: hidden; margin-bottom: 20px; }
+.card-header { padding: 13px 22px; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.88rem; color: #fff; letter-spacing: 0.02em; }
+.step-num { width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,0.25); display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0; }
+.card-body { padding: 22px; }
+.field { margin-bottom: 18px; }
+.field:last-child { margin-bottom: 0; }
+label.lbl { display: block; font-size: 0.82rem; font-weight: 700; color: #0c326f; margin-bottom: 6px; }
+.obrig { color: #c0392b; }
+.hint  { font-weight: 400; color: #999; font-size: 0.75rem; margin-left: 6px; }
+input[type=text], select, textarea {
+  width: 100%; padding: 10px 13px; border: 1.5px solid #c5d0de; border-radius: 6px;
+  font-family: inherit; font-size: 0.9rem; color: #1c2b3a; background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+input[type=text]:focus, select:focus { outline: none; border-color: #1351b4; box-shadow: 0 0 0 3px rgba(19,81,180,0.1); }
+select { cursor: pointer; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media(max-width:500px){ .row2 { grid-template-columns: 1fr; } }
+
+/* Token */
+.token-wrap { position: relative; }
+.token-wrap input { font-family: 'Courier New', monospace; font-size: 1rem; letter-spacing: 0.08em; text-transform: uppercase; padding-right: 44px; }
+.token-icon { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 1.1rem; }
+#token-status { font-size: 0.78rem; margin-top: 5px; min-height: 18px; }
+
+/* Tipo btns */
+.tipo-btns { display: flex; gap: 12px; }
+@media(max-width:440px){ .tipo-btns { flex-direction: column; } }
+.tipo-btn {
+  flex: 1; border: 2px solid #c5d0de; border-radius: 8px; padding: 14px 10px;
+  text-align: center; cursor: pointer; font-size: 0.84rem; font-weight: 500; color: #555;
+  background: #fff; transition: all 0.18s; line-height: 1.4; user-select: none;
+}
+.tipo-btn .icone { font-size: 1.7rem; display: block; margin-bottom: 6px; }
+.tipo-btn:hover { border-color: #1351b4; color: #1351b4; background: #eef4ff; }
+.tipo-btn.ativo  { border-color: #1351b4; background: #d4e5ff; color: #0c326f; font-weight: 700; }
+
+/* Download box */
+.dl-box { background: #eef4ff; border: 1.5px dashed #1351b4; border-radius: 8px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+.dl-box .dl-icone { font-size: 1.8rem; flex-shrink: 0; }
+.dl-box .dl-txt { flex: 1; min-width: 160px; }
+.dl-box .dl-txt strong { display: block; font-size: 0.86rem; color: #0c326f; }
+.dl-box .dl-txt span   { font-size: 0.76rem; color: #666; }
+.btn-dl { background: #1351b4; color: #fff; border: none; border-radius: 6px; padding: 9px 16px; font-size: 0.8rem; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; white-space: nowrap; transition: background 0.2s; }
+.btn-dl:hover { background: #0c326f; }
+
+/* Voto */
+.voto-opcoes { display: flex; gap: 12px; }
+@media(max-width:420px){ .voto-opcoes { flex-direction: column; } }
+.voto-label { flex: 1; border: 2px solid #c5d0de; border-radius: 8px; padding: 13px; cursor: pointer; text-align: center; font-weight: 600; font-size: 0.9rem; transition: all 0.18s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.voto-label:hover { border-color: #888; background: #f8f8f8; }
+.voto-label input { display: none; }
+
+/* Upload */
+.upload-zone { border: 2px dashed #c5d0de; border-radius: 8px; padding: 26px 18px; text-align: center; cursor: pointer; transition: all 0.18s; position: relative; }
+.upload-zone:hover { border-color: #1351b4; background: #eef4ff; }
+.upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.upload-zone .up-icone { font-size: 2rem; margin-bottom: 8px; }
+.upload-zone .up-txt { font-size: 0.84rem; color: #555; line-height: 1.5; }
+.upload-zone .up-txt strong { color: #1351b4; }
+#upload-feedback { font-size: 0.81rem; margin-top: 8px; min-height: 18px; }
+
+/* Gov.br box */
+.govbr-box { background: #fff; border: 1px solid #bbd4f5; border-radius: 8px; overflow: hidden; margin-bottom: 18px; }
+.govbr-btn { background: #eef4ff; border: none; width: 100%; text-align: left; padding: 13px 18px; font-family: inherit; font-size: 0.87rem; font-weight: 700; color: #0c326f; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+.govbr-btn:hover { background: #ddeaff; }
+#govbr-content { display: none; padding: 16px 18px; }
+.govbr-steps { list-style: none; counter-reset: st; }
+.govbr-steps li { counter-increment: st; padding: 9px 0 9px 40px; position: relative; font-size: 0.83rem; line-height: 1.6; border-bottom: 1px solid #eef; }
+.govbr-steps li:last-child { border-bottom: none; }
+.govbr-steps li::before { content: counter(st); position: absolute; left: 0; top: 9px; width: 26px; height: 26px; background: #1351b4; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.77rem; font-weight: 700; }
+.govbr-steps li strong { color: #0c326f; }
+
+/* Declaração */
+.decl-wrap { display: flex; gap: 12px; align-items: flex-start; background: #f9fafc; border: 1.5px solid #c5d0de; border-radius: 8px; padding: 14px; cursor: pointer; }
+.decl-wrap input[type=checkbox] { width: 20px; height: 20px; margin-top: 1px; flex-shrink: 0; accent-color: #1351b4; cursor: pointer; }
+.decl-wrap span { font-size: 0.82rem; line-height: 1.6; color: #444; }
+
+/* Botão enviar */
+.btn-enviar { width: 100%; padding: 15px; background: #1351b4; color: #fff; border: none; border-radius: 8px; font-family: inherit; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 10px; letter-spacing: 0.03em; transition: background 0.2s, box-shadow 0.2s; }
+.btn-enviar:hover:not(:disabled) { background: #0c326f; box-shadow: 0 4px 16px rgba(19,81,180,0.3); }
+.btn-enviar:disabled { background: #aac0e0; cursor: not-allowed; }
+
+/* Erro */
+#erro-form { display: none; background: #fdecea; border: 1px solid #e74c3c; border-radius: 6px; padding: 12px 16px; font-size: 0.84rem; color: #c0392b; margin-bottom: 14px; }
+
+/* Sucesso */
+#tela-sucesso { display: none; background: #fff; border-radius: 10px; box-shadow: 0 2px 16px rgba(19,81,180,0.09); padding: 48px 32px; text-align: center; }
+#tela-sucesso .ok-icone { font-size: 4rem; margin-bottom: 16px; }
+#tela-sucesso h2 { font-size: 1.4rem; color: #168821; margin-bottom: 12px; }
+#tela-sucesso p { font-size: 0.88rem; color: #555; line-height: 1.7; max-width: 460px; margin: 0 auto 8px; }
+.protocolo { background: #f0f4f8; border-radius: 6px; padding: 11px 20px; display: inline-block; font-family: monospace; font-size: 1rem; margin: 12px 0; letter-spacing: 0.06em; color: #0c326f; }
+
+footer { background: #0c326f; color: rgba(255,255,255,0.55); text-align: center; font-size: 0.73rem; padding: 18px; line-height: 1.7; }
+footer a { color: rgba(255,255,255,0.75); }
+</style>
+</head>
+<body>
+
+<div class="gov-bar">🔒 Portal Oficial do Governo Federal &nbsp;|&nbsp; Ambiente Seguro</div>
+
+<header>
+  <img src="data:image/jpeg;base64,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" alt="CGIBS" onerror="this.style.display='none'">
+  <div class="header-div">
+    <h1>Manifestação do Poder Legislativo sobre a Proposta Orçamentária do CGIBS</h1>
+    <p>Exercício Financeiro de 2026 — Formulário Oficial de Coleta de Manifestações</p>
+  </div>
+  <span class="badge">Resolução CGIBS nº [XX]/2026</span>
+</header>
+
+<div class="page">
+
+  <div class="aviso" id="aviso-topo">
+    <strong>⚠️ Antes de prosseguir — leia atentamente</strong>
+    Este formulário é de uso exclusivo dos Presidentes das Assembleias Legislativas Estaduais e Câmaras Municipais habilitadas. O Token de Acesso foi enviado ao e-mail institucional cadastrado no CGIBS. Documentos sem assinatura digital Gov.br de nível <strong>Prata ou Ouro</strong> não serão computados na apuração.
+  </div>
+
+  <form id="form-manifestacao" onsubmit="enviarFormulario(event)">
+
+    <!-- CARD 1 -->
+    <div class="card">
+      <div class="card-header" style="background:#1351b4;">
+        <span class="step-num">1</span> Identificação e Acesso
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label class="lbl" for="token">Token Único de Pauta <span class="obrig">*</span> <span class="hint">Enviado ao e-mail institucional</span></label>
+          <div class="token-wrap">
+            <input type="text" id="token" name="token" placeholder="ORC2026-SC-EST-001" maxlength="22" autocomplete="off" oninput="validarToken(this)" required>
+            <span class="token-icon">🔑</span>
+          </div>
+          <div id="token-status"></div>
+        </div>
+        <div class="field">
+          <label class="lbl">Tipo de Poder Legislativo <span class="obrig">*</span></label>
+          <input type="hidden" id="tipo_poder" name="tipo_poder">
+          <div class="tipo-btns">
+            <div class="tipo-btn" id="btn-estadual" onclick="selecionarTipo('Estadual')">
+              <span class="icone">🏛️</span>
+              Poder Legislativo <strong>Estadual</strong><br>
+              <small style="font-weight:400;font-size:0.74rem;">Assembleia Legislativa</small>
+            </div>
+            <div class="tipo-btn" id="btn-municipal" onclick="selecionarTipo('Municipal')">
+              <span class="icone">🏙️</span>
+              Poder Legislativo <strong>Municipal</strong><br>
+              <small style="font-weight:400;font-size:0.74rem;">Câmara Municipal</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 2A: ESTADUAL -->
+    <div class="card" id="secao-estadual" style="display:none;">
+      <div class="card-header" style="background:#0c5f4a;">
+        <span class="step-num">2</span> Dados — Assembleia Legislativa Estadual
+      </div>
+      <div class="card-body">
+        <div class="dl-box">
+          <div class="dl-icone">📄</div>
+          <div class="dl-txt">
+            <strong>Modelo Oficial — Manifestação Estadual</strong>
+            <span>Baixe, preencha, assine pelo Gov.br e retorne aqui</span>
+          </div>
+          <a href="LINK_MODELO_ESTADUAL_DRIVE" class="btn-dl">⬇ Baixar Modelo</a>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label class="lbl" for="uf-est">Estado (UF) <span class="obrig">*</span></label>
+            <select id="uf-est" name="uf_estadual">
+              <option value="">Selecione...</option>
+              <option>AC</option><option>AL</option><option>AM</option><option>AP</option>
+              <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
+              <option>GO</option><option>MA</option><option>MG</option><option>MS</option>
+              <option>MT</option><option>PA</option><option>PB</option><option>PE</option>
+              <option>PI</option><option>PR</option><option>RJ</option><option>RN</option>
+              <option>RO</option><option>RR</option><option>RS</option><option>SC</option>
+              <option>SE</option><option>SP</option><option>TO</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="lbl" for="presidente-est">Nome do Presidente <span class="obrig">*</span></label>
+            <input type="text" id="presidente-est" name="presidente_estadual" placeholder="Nome conforme CPF/Gov.br">
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl">Manifestação desta Casa Legislativa <span class="obrig">*</span></label>
+          <div class="voto-opcoes">
+            <label class="voto-label" style="border-color:#c5d0de;" onmouseover="this.style.borderColor='#168821'" onmouseout="if(!document.querySelector('input[name=voto_estadual]:checked'))this.style.borderColor='#c5d0de'">
+              <input type="radio" name="voto_estadual" value="APROVAÇÃO"> ✅ APROVAÇÃO
+            </label>
+            <label class="voto-label" style="border-color:#c5d0de;" onmouseover="this.style.borderColor='#c0392b'" onmouseout="if(!document.querySelector('input[name=voto_estadual]:checked'))this.style.borderColor='#c5d0de'">
+              <input type="radio" name="voto_estadual" value="REJEIÇÃO"> ❌ REJEIÇÃO
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 2B: MUNICIPAL -->
+    <div class="card" id="secao-municipal" style="display:none;">
+      <div class="card-header" style="background:#7b3f00;">
+        <span class="step-num">2</span> Dados — Câmara Municipal
+      </div>
+      <div class="card-body">
+        <div class="dl-box" style="border-color:#b07300;background:#fff8ee;">
+          <div class="dl-icone">📄</div>
+          <div class="dl-txt">
+            <strong>Modelo Oficial — Manifestação Municipal</strong>
+            <span>Baixe, preencha, assine pelo Gov.br e retorne aqui</span>
+          </div>
+          <a href="LINK_MODELO_MUNICIPAL_DRIVE" class="btn-dl" style="background:#b07300;">⬇ Baixar Modelo</a>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label class="lbl" for="uf-mun">Estado (UF) <span class="obrig">*</span></label>
+            <select id="uf-mun" name="uf_municipal">
+              <option value="">Selecione...</option>
+              <option>AC</option><option>AL</option><option>AM</option><option>AP</option>
+              <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
+              <option>GO</option><option>MA</option><option>MG</option><option>MS</option>
+              <option>MT</option><option>PA</option><option>PB</option><option>PE</option>
+              <option>PI</option><option>PR</option><option>RJ</option><option>RN</option>
+              <option>RO</option><option>RR</option><option>RS</option><option>SC</option>
+              <option>SE</option><option>SP</option><option>TO</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="lbl" for="municipio">Município <span class="obrig">*</span></label>
+            <input type="text" id="municipio" name="municipio" placeholder="Ex: Florianópolis">
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="presidente-mun">Nome do Presidente <span class="obrig">*</span></label>
+          <input type="text" id="presidente-mun" name="presidente_municipal" placeholder="Nome conforme CPF/Gov.br">
+        </div>
+        <div class="field">
+          <label class="lbl">Manifestação desta Câmara Municipal <span class="obrig">*</span></label>
+          <div class="voto-opcoes">
+            <label class="voto-label" style="border-color:#c5d0de;">
+              <input type="radio" name="voto_municipal" value="APROVAÇÃO"> ✅ APROVAÇÃO
+            </label>
+            <label class="voto-label" style="border-color:#c5d0de;">
+              <input type="radio" name="voto_municipal" value="REJEIÇÃO"> ❌ REJEIÇÃO
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 3: UPLOAD -->
+    <div class="card" id="secao-upload" style="display:none;">
+      <div class="card-header" style="background:#2f5597;">
+        <span class="step-num">3</span> Assinatura Gov.br e Envio do Documento
+      </div>
+      <div class="card-body">
+        <div class="govbr-box">
+          <button type="button" class="govbr-btn" onclick="toggleGovBr(this)">
+            📋 Como assinar pelo Gov.br — clique para expandir
+            <span>▼</span>
+          </button>
+          <div id="govbr-content">
+            <ol class="govbr-steps">
+              <li><strong>Preencha o modelo baixado</strong> — complete os campos entre colchetes e salve como PDF.</li>
+              <li><strong>Acesse</strong> <a href="https://assinador.iti.br" target="_blank">assinador.iti.br</a> com conta Gov.br <strong>Prata ou Ouro</strong>. Bronze não tem validade jurídica.</li>
+              <li><strong>Assine</strong> — clique em "Assinar documento", faça upload do PDF e confirme.</li>
+              <li><strong>Baixe o arquivo assinado</strong> — terá o prefixo <code>signed-</code> no nome.</li>
+              <li><strong>Anexe abaixo</strong> o arquivo <code>signed-[nome].pdf</code>.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl">Documento PDF assinado digitalmente <span class="obrig">*</span> <span class="hint">Somente PDF · Máx. 5MB</span></label>
+          <div class="upload-zone">
+            <input type="file" id="arquivo-pdf" name="arquivo_pdf" accept=".pdf,application/pdf" onchange="validarArquivo(this)">
+            <div class="up-icone">📎</div>
+            <div class="up-txt"><strong>Clique ou arraste o arquivo aqui</strong><br>Formato: PDF — Tamanho máximo: 5MB</div>
+          </div>
+          <div id="upload-feedback"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 4: DECLARAÇÃO -->
+    <div class="card" id="secao-declaracao" style="display:none;">
+      <div class="card-header" style="background:#1c2b3a;">
+        <span class="step-num">4</span> Declaração e Envio
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label class="decl-wrap">
+            <input type="checkbox" id="declaracao" onchange="atualizarBotao()">
+            <span>Declaro, sob as penas da lei, que as informações prestadas são verdadeiras, que represento legalmente a Casa Legislativa indicada, e que a assinatura digital aposta no documento é legítima, nos termos da Lei nº 14.063/2020 e da LC nº 214/2025.</span>
+          </label>
+        </div>
+        <div id="erro-form"></div>
+        <button type="submit" class="btn-enviar" id="btn-enviar" disabled>
+          🔒 Enviar Manifestação Oficial
+        </button>
+        <p style="font-size:0.73rem;color:#aaa;text-align:center;margin-top:10px;">Um número de protocolo será gerado ao enviar. Guarde-o para comprovação.</p>
+      </div>
+    </div>
+
+  </form>
+
+  <!-- TELA DE SUCESSO -->
+  <div id="tela-sucesso">
+    <div class="ok-icone">✅</div>
+    <h2>Manifestação Registrada com Sucesso</h2>
+    <p>A manifestação desta Casa Legislativa foi recebida e registrada pelo sistema do CGIBS.</p>
+    <div class="protocolo" id="num-protocolo">PROT-2026-XXXXXX</div>
+    <p>Guarde este número de protocolo. Em caso de dúvidas, contate a Secretaria Executiva do CGIBS.</p>
+    <p style="margin-top:20px;font-size:0.76rem;color:#bbb;">Este formulário pode ser fechado com segurança.</p>
+  </div>
+
+</div>
+
+<footer>
+  Comitê Gestor do Imposto sobre Bens e Serviços (CGIBS) — Secretaria Executiva<br>
+  Lei Complementar nº 214, de 16 de janeiro de 2025
+</footer>
+
+</body>
+</html>
